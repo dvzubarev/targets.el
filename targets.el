@@ -161,7 +161,8 @@ visual selection), targets will push the old position to the jump list. This
 default function will return non-nil when the positions are not on the same
 line. A custom function can be used by changing the `targets-push-jump-p'
 variable."
-  (not (= (line-number-at-pos old-pos) (line-number-at-pos new-pos))))
+  (or (not (eq targets--reset-window (get-buffer-window)))
+      (not (= (line-number-at-pos old-pos) (line-number-at-pos new-pos)))))
 
 (defun targets-bound (&optional backwards)
   "Return the bound to be used when seeking forwards or backwards.
@@ -397,16 +398,19 @@ Do not reset if the current command is in `evil-change-commands'."
   "Called after next and last text objects to restore the cursor position.
 The point is not restored if there is a selection."
   (unless (region-active-p)
-    (when targets--reset-position
-      (jump-to-register 'targets--reset-position))
     (when targets--reset-window
       (let* ((window targets--reset-window)
              (frame (window-frame window)))
         (unless (equal frame (selected-frame))
           (select-frame-set-input-focus frame))
-        (select-window window))))
+        (select-window window)))
+
+    (when targets--reset-position
+      (jump-to-register 'targets--reset-position)))
+
   (setq targets--reset-window nil)
-  (setq targets--reset-position nil))
+  (setq targets--reset-position nil)
+  (set-register 'targets--reset-position nil))
 
 (defvar targets--push-jump nil)
 
@@ -492,7 +496,7 @@ current text object."
 
   (defun targets--save-point-and-jump (pos)
     "Put the point in the targets--reset-position register nad jump to POS."
-    (point-to-register 'targets--reset-position)
+    ;; (point-to-register 'targets--reset-position)
     (goto-char pos))
 
   (defun targets--avy-seek (command open close type select-func)
@@ -1201,8 +1205,7 @@ there is no MORE-KEYS. KEYS must always be manually specified."
             `(targets--define-text-object ,(cl-first info)
                  ,(concat "Select" (cl-third info) name ".")
                  ,let
-               (point-to-register 'targets--reset-position)
-               (setq targets--reset-position t)
+               (targets--reset-after)
                (when (targets--composite-seek ',to-args nil count)
                  ;; purposely don't give visual info since seeking
                  (setq beg nil end nil)
@@ -1220,8 +1223,7 @@ there is no MORE-KEYS. KEYS must always be manually specified."
                  ,(concat "Select" (cl-third info) name ".")
                  ,let
                (targets--set-last-text-object #',(cl-first info))
-               (point-to-register 'targets--reset-position)
-               (setq targets--reset-position t)
+               (targets--reset-after)
                (when (targets--composite-seek ',to-args t count)
                  (setq beg nil end nil count 1)
                  ,(cl-second info))))
@@ -1236,8 +1238,7 @@ there is no MORE-KEYS. KEYS must always be manually specified."
                  ,(concat "Select" (cl-third info) name " using avy.")
                  ,let
                (targets--set-last-text-object #',(cl-first info))
-               (setq targets--reset-position t)
-               (setq targets--reset-window (get-buffer-window))
+               (targets--reset-after)
                ;; fix repeat info
                (when (evil-repeat-recording-p)
                  (setq
